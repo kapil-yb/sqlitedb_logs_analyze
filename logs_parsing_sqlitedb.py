@@ -26,10 +26,15 @@ import gzip
 import shutil
 
 # Location where Support bundle is located
-your_directory_path = "<Un-zipped Support bundle dir path/>"
+#your_directory_path = input("Enter the root directory to search for log files: ")
+your_directory_path = "/Users/kapilmaheshwari/Documents/Technical/python/logs_parsing/yb-support-bundle-omc-20240609061653.028-logs/yb-tserver-0"
 
 # Regular expression pattern for parsing log entries
 log_pattern = re.compile(r'([IWEF])(\d{2})(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{6}) (\d+) ([^:]+):(\d+)\] (.+)')
+
+# Process each log file
+batch_size = 1000  # Adjust the batch size as needed
+data_batch = []
 
 
 # extract the .gz file
@@ -126,6 +131,11 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
 
 traverse_and_extract(your_directory_path)
 
+# Function to batch insert parsed data
+def batch_insert(cursor, data_batch):
+    cursor.executemany('''INSERT INTO logs (server_name, log_level, month, day, hour, minute, second, microseconds, thread_id, file, line, message)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''', data_batch)
+
 
 file_paths = list_files_with_keywords(your_directory_path)
 for log_file_path in file_paths:
@@ -143,8 +153,10 @@ for log_file_path in file_paths:
                 if line.startswith(('I', 'W', 'E', 'F')):  # Check if the line starts with a log level
                     parsed_data = parse_log_line(line, server_name)
                     if parsed_data:
-                        cursor.execute('''INSERT INTO logs (server_name, log_level, month, day, hour, minute, second, microseconds, thread_id, file, line, message)
-                                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''', parsed_data)
+                        data_batch.append(parsed_data)
+                        if len(data_batch) >= batch_size:
+                            batch_insert(cursor, data_batch)
+                            data_batch = []  # Clear the batch after inserting
     except FileNotFoundError:
         print(f"Error: File {log_file_path} not found.")
 
