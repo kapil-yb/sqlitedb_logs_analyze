@@ -1,32 +1,19 @@
 """
-Objective of this code is to extract the logs of Yugabyte from Support bundle, and load it in SQLITE DB for processing and visualization.
+Objective of this code is to extract the logs of Yugabyte from Support bundle, and load it in postgres DB for processing and visualization.
 
 Script execution:
 1) Script is executed from outside the Support bundle dir
-2) sqlitdb is installed on the same host. Script will create a file / sqlitedb with file name "logs.db" in same dir
-3) Change the your_directory_path directory path in the script to provide support bundle location
-
-Let's create a "sqlfile", which has the query to execute to generate the report for analysis 
-
-$ cat sqlfile
-select day,hour,minute,second,'LeaderStepdown' from logs where message like '%Leader stepdown request%' group by 1,2,3,4 union select day,hour,minute,second,'DNSResolveFailed' from logs where message like '%Resolve failed%' group by 1,2,3,4 order by 1,2,3,4;
-$
-
-Here, "logs.db" is the database which I hard coded in script and "logs" is the name of table where logs are uploaded as part of processing
-
-sqlite3 logs.db ".mode csv" ".headers on" -init sqlifile > output.csv
-
+2) postgres is installed on the same host. Script will create a file / sqlitedb with file name "logs.db" in same dir
 """
-
 import re
-import sqlite3
+import psycopg2
 import os
 import tarfile
 import gzip
 import shutil
 
 # Location where Support bundle is located
-your_directory_path = "<Un-zipped Support bundle dir path/>"
+your_directory_path = "/Users/kapilmaheshwari/Documents/Technical/python/logs_parsing/yb-support-bundle-omc-20240609061653.028-logs/"
 
 # Regular expression pattern for parsing log entries
 log_pattern = re.compile(r'([IWEF])(\d{2})(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{6}) (\d+) ([^:]+):(\d+)\] (.+)')
@@ -99,15 +86,34 @@ def list_files_with_keywords(root_dir):
     matching_files = []  # Initialize an empty list to store file paths
     for dirpath, dirnames, filenames in os.walk(root_dir):
         for filename in filenames:
-            if "yb-tserver" in filename and "INFO" in filename and "swp" not in filename:
+            if "yb-tserver" in filename and "INFO" in filename:
                 matching_files.append(os.path.join(dirpath, filename))
     return matching_files
 
 # Connect to SQLite database
-conn = sqlite3.connect('logs.db')
-cursor = conn.cursor()
+# Replace with your actual PostgreSQL connection details
+db_config = {
+    'dbname': 'logs_db',
+    'user': 'kapilmaheshwari',
+    'password': 'postgres',
+    'host': 'localhost',
+    'port': '5432'  # Default is 5432
+}
 
-# Create logs table if not exists
+try:
+    conn = psycopg2.connect(**db_config)
+    cursor = conn.cursor()
+    
+    # Execute a simple query
+    cursor.execute("SELECT version();")
+    db_version = cursor.fetchone()
+#    print(f"Connected to PostgreSQL database. Version: {db_version}")
+    
+except Exception as e:
+    print(f"Error connecting to PostgreSQL database: {e}")
+
+
+#Create logs table if not exists
 cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
                     server_name TEXT,
                     log_level TEXT,
@@ -144,17 +150,10 @@ for log_file_path in file_paths:
                     parsed_data = parse_log_line(line, server_name)
                     if parsed_data:
                         cursor.execute('''INSERT INTO logs (server_name, log_level, month, day, hour, minute, second, microseconds, thread_id, file, line, message)
-                                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);''', parsed_data)
+                                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);''', parsed_data)
     except FileNotFoundError:
         print(f"Error: File {log_file_path} not found.")
 
 # Commit changes and close connection
 conn.commit()
 conn.close()
-
-"""
-sqlite3 logs.db
-sqlite> select server_name,count(*) from logs group by 1 ;
-yb-tserver-0.root.log|1895272
-yb-tserver-1.root.log|1681379
-"""
