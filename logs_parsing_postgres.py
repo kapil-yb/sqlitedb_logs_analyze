@@ -13,7 +13,7 @@ import gzip
 import shutil
 
 # Location where Support bundle is located
-your_directory_path = "/Users/kapilmaheshwari/Documents/Technical/python/logs_parsing/yb-support-bundle-omc-20240609061653.028-logs/"
+your_directory_path = "Your dir path"
 
 # Regular expression pattern for parsing log entries
 log_pattern = re.compile(r'([IWEF])(\d{2})(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{6}) (\d+) ([^:]+):(\d+)\] (.+)')
